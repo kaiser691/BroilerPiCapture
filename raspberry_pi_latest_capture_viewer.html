@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raspberry Pi Latest Capture Viewer</title>
+    <link rel="icon" type="image/png" href="https://kaiser691.github.io/IoTBasedBroilerCage/images/AB.png">
+    <!-- Tailwind CSS for responsive layout and visual polish -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Gentle pulse for active connection indicator */
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.45; transform: scale(0.88); }
+        }
+        .live-dot {
+            animation: pulseDot 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+    <!-- Top Navigation & Status Header -->
+    <header class="border-b border-slate-800 bg-slate-900/85 backdrop-blur sticky top-0 z-10">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold text-sm">
+                    Pi
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-semibold tracking-tight text-white">Latest Pi Capture</h1>
+                    <p class="text-xs text-slate-400">Saved Snapshots Uploaded by Raspberry Pi</p>
+                </div>
+            </div>
+
+            <!-- Connection Status Pill -->
+            <div class="flex items-center gap-2.5 sm:gap-3">
+                <a
+                    href="https://kaiser691.github.io/IoTBasedBroilerCage/"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+                >
+                    <span>Home</span>
+                </a>
+
+                <div id="statusBadge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <span id="statusDot" class="w-2 h-2 rounded-full bg-amber-400 live-dot"></span>
+                    <span id="statusText">Connecting to database...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Viewer Container -->
+    <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6">
+        <!-- Non-blocking Status Banner -->
+        <div id="toastBanner" class="hidden rounded-xl px-4 py-3 text-sm border transition-all"></div>
+
+        <!-- Snapshot Card -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+            <!-- Toolbar -->
+            <div class="px-4 sm:px-6 py-3.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-900/60">
+                <div class="flex items-center gap-2 text-xs sm:text-sm text-slate-300">
+                    <span class="text-slate-400">Path:</span>
+                    <code class="px-2 py-0.5 rounded-md bg-slate-800 text-emerald-400 font-mono text-xs">/latest_photo</code>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button
+                        id="downloadBtn"
+                        type="button"
+                        disabled
+                        class="px-3 py-2 rounded-xl text-xs sm:text-sm font-medium bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 border border-slate-700 transition cursor-pointer"
+                    >
+                        Download JPEG
+                    </button>
+                    <button
+                        id="fullscreenBtn"
+                        type="button"
+                        disabled
+                        class="px-3 py-2 rounded-xl text-xs sm:text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:pointer-events-none text-white transition cursor-pointer"
+                    >
+                        Fullscreen
+                    </button>
+                </div>
+            </div>
+
+            <!-- Snapshot Display Area -->
+            <div id="imageContainer" class="relative bg-slate-950/90 min-h-[280px] sm:min-h-[420px] flex items-center justify-center p-4">
+                <!-- Empty / Waiting State -->
+                <div id="emptyState" class="text-center max-w-sm mx-auto py-8">
+                    <div class="w-12 h-12 rounded-2xl bg-slate-800/90 border border-slate-700 mx-auto mb-3 flex items-center justify-center text-slate-400 text-lg">
+                        📷
+                    </div>
+                    <p class="text-sm font-medium text-slate-300">Waiting for snapshot...</p>
+                    <p class="text-xs text-slate-500 mt-1">
+                        Snapshots pushed to <code class="text-slate-400">latest_photo</code> will appear here automatically.
+                    </p>
+                </div>
+
+                <!-- Live Camera Frame -->
+                <img
+                    id="piImage"
+                    alt="Latest Raspberry Pi camera capture"
+                    class="hidden max-w-full max-h-[70vh] w-auto h-auto rounded-xl object-contain shadow-2xl"
+                />
+            </div>
+
+            <!-- Metadata Footer -->
+            <div class="px-4 sm:px-6 py-4 border-t border-slate-800 bg-slate-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm">
+                <p id="timestamp" class="text-slate-300 font-medium">Last updated: Awaiting first capture</p>
+                <p id="frameStats" class="text-slate-500 text-xs">Payload size: --</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Firebase Realtime Database Compat SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+    <script>
+        // Firebase Realtime Database configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA3Ugcz3Uh4GKo63_vPTinlqM1hfs5Yl0g",
+            authDomain: "iot-based-monitoring-dc003.firebaseapp.com",
+            databaseURL: "https://iot-based-monitoring-dc003-default-rtdb.asia-southeast1.firebasedatabase.app/",
+            projectId: "iot-based-monitoring-dc003"
+        };
+
+        // Cached UI references
+        const piImage = document.getElementById('piImage');
+        const emptyState = document.getElementById('emptyState');
+        const imageContainer = document.getElementById('imageContainer');
+        const timestampEl = document.getElementById('timestamp');
+        const frameStatsEl = document.getElementById('frameStats');
+        const statusBadge = document.getElementById('statusBadge');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const toastBanner = document.getElementById('toastBanner');
+
+        let currentDataUri = '';
+        let currentDateTime = 'snapshot';
+        let toastTimeoutId = null;
+
+        /**
+         * Shows a temporary status banner without blocking browser dialogs.
+         */
+        function showToast(message, type = 'info') {
+            if (toastTimeoutId) {
+                clearTimeout(toastTimeoutId);
+            }
+
+            const styles = {
+                info: 'bg-sky-500/15 border-sky-500/30 text-sky-200',
+                success: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200',
+                error: 'bg-rose-500/15 border-rose-500/30 text-rose-200'
+            };
+
+            toastBanner.className = `rounded-xl px-4 py-3 text-sm border transition-all ${styles[type] || styles.info}`;
+            toastBanner.textContent = message;
+            toastBanner.classList.remove('hidden');
+
+            toastTimeoutId = setTimeout(() => {
+                toastBanner.classList.add('hidden');
+            }, 4000);
+        }
+
+        /**
+         * Updates the header status badge for live connection feedback.
+         */
+        function setConnectionStatus(state, label) {
+            statusText.textContent = label;
+
+            if (state === 'connected') {
+                statusBadge.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+                statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400 live-dot';
+            } else if (state === 'error') {
+                statusBadge.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30';
+                statusDot.className = 'w-2 h-2 rounded-full bg-rose-400';
+            } else {
+                statusBadge.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30';
+                statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 live-dot';
+            }
+        }
+
+        /**
+         * Estimates decoded payload byte size from base64 image content.
+         */
+        function formatApproxSize(base64String) {
+            if (!base64String || typeof base64String !== 'string') return '--';
+            const cleaned = base64String.includes(',') ? base64String.split(',')[1] : base64String;
+            const padding = (cleaned.match(/=+$/) || [''])[0].length;
+            const bytes = Math.max(0, Math.floor((cleaned.length * 3) / 4) - padding);
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        }
+
+        // Reveal image once decoded by the browser
+        piImage.addEventListener('load', () => {
+            emptyState.classList.add('hidden');
+            piImage.classList.remove('hidden');
+            downloadBtn.disabled = false;
+            fullscreenBtn.disabled = false;
+        });
+
+        // Recover gracefully if a malformed payload arrives
+        piImage.addEventListener('error', () => {
+            piImage.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            downloadBtn.disabled = true;
+            fullscreenBtn.disabled = true;
+            showToast('Received snapshot data could not be decoded as a valid JPEG image.', 'error');
+        });
+
+        // Save current snapshot locally as a JPEG file
+        downloadBtn.addEventListener('click', () => {
+            if (!currentDataUri) return;
+            try {
+                const safeName = String(currentDateTime || 'pi-capture')
+                    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+                    .replace(/^_+|_+$/g, '');
+                const link = document.createElement('a');
+                link.href = currentDataUri;
+                link.download = `${safeName || 'pi-capture'}.jpg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('Snapshot download started.', 'success');
+            } catch (err) {
+                showToast('Unable to download image in this browser context.', 'error');
+            }
+        });
+
+        // Toggle fullscreen mode for the snapshot container
+        fullscreenBtn.addEventListener('click', async () => {
+            if (!currentDataUri) return;
+            try {
+                if (!document.fullscreenElement) {
+                    await imageContainer.requestFullscreen();
+                } else {
+                    await document.exitFullscreen();
+                }
+            } catch (err) {
+                showToast('Fullscreen mode is not supported or was blocked here.', 'info');
+            }
+        });
+
+        // Initialize Firebase and subscribe to Realtime Database changes
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+
+            const db = firebase.database();
+
+            db.ref('.info/connected').on('value', (connSnap) => {
+                if (connSnap.val() === true) {
+                    setConnectionStatus('connected', 'Synced');
+                } else {
+                    setConnectionStatus('connecting', 'Reconnecting...');
+                }
+            });
+
+            db.ref('latest_photo').on(
+                'value',
+                (snapshot) => {
+                    const data = snapshot.val();
+                    if (data && data.image_base64) {
+                        const rawBase64 = String(data.image_base64).trim();
+                        const dataUri = rawBase64.startsWith('data:image/')
+                            ? rawBase64
+                            : `data:image/jpeg;base64,${rawBase64}`;
+
+                        currentDataUri = dataUri;
+                        currentDateTime = data.date_time || 'snapshot';
+                        piImage.src = dataUri;
+                        timestampEl.textContent = 'Last updated: ' + (data.date_time || 'Unknown time');
+                        frameStatsEl.textContent = `Payload size: ~${formatApproxSize(rawBase64)}`;
+                    } else {
+                        currentDataUri = '';
+                        piImage.removeAttribute('src');
+                        piImage.classList.add('hidden');
+                        emptyState.classList.remove('hidden');
+                        downloadBtn.disabled = true;
+                        fullscreenBtn.disabled = true;
+                        timestampEl.textContent = 'Last updated: Waiting for snapshot...';
+                        frameStatsEl.textContent = 'Payload size: --';
+                    }
+                },
+                (error) => {
+                    setConnectionStatus('error', 'Database Error');
+                    showToast(`Failed to read latest_photo: ${error.message}`, 'error');
+                }
+            );
+        } catch (initError) {
+            setConnectionStatus('error', 'Init Failed');
+            showToast(`Firebase initialization error: ${initError.message}`, 'error');
+        }
+    </script>
+</body>
+</html>
