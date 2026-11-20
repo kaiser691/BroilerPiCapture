@@ -35,7 +35,7 @@
                 </div>
                 <div>
                     <h1 class="text-lg sm:text-xl font-semibold tracking-tight text-white">Latest Pi Capture</h1>
-                    <p class="text-xs text-slate-400">Saved Snapshot Uploaded by Raspberry Pi</p>
+                    <p class="text-xs text-slate-400">Saved Snapshots Uploaded by Raspberry Pi</p>
                 </div>
             </div>
 
@@ -70,7 +70,15 @@
                     <code class="px-2 py-0.5 rounded-md bg-slate-800 text-emerald-400 font-mono text-xs">/latest_photo</code>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button
+                        id="captureBtn"
+                        type="button"
+                        class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:pointer-events-none text-white shadow-sm transition cursor-pointer"
+                    >
+                        <span id="captureBtnIcon">📸</span>
+                        <span id="captureBtnText">Capture & Analyze</span>
+                    </button>
                     <button
                         id="downloadBtn"
                         type="button"
@@ -99,7 +107,7 @@
                     </div>
                     <p class="text-sm font-medium text-slate-300">Waiting for snapshot...</p>
                     <p class="text-xs text-slate-500 mt-1">
-                        Snapshots pushed to <code class="text-slate-400">latest_photo</code> will appear here automatically.
+                        Click <span class="text-rose-400 font-medium">Capture & Analyze</span> or wait for snapshots pushed to <code class="text-slate-400">latest_photo</code>.
                     </p>
                 </div>
 
@@ -141,6 +149,9 @@
         const statusBadge = document.getElementById('statusBadge');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
+        const captureBtn = document.getElementById('captureBtn');
+        const captureBtnIcon = document.getElementById('captureBtnIcon');
+        const captureBtnText = document.getElementById('captureBtnText');
         const downloadBtn = document.getElementById('downloadBtn');
         const fullscreenBtn = document.getElementById('fullscreenBtn');
         const toastBanner = document.getElementById('toastBanner');
@@ -169,7 +180,7 @@
 
             toastTimeoutId = setTimeout(() => {
                 toastBanner.classList.add('hidden');
-            }, 4000);
+            }, 4500);
         }
 
         /**
@@ -266,6 +277,50 @@
                     setConnectionStatus('connected', 'Synced');
                 } else {
                     setConnectionStatus('connecting', 'Reconnecting...');
+                }
+            });
+
+            // Trigger Raspberry Pi camera capture & YOLO analysis remotely
+            captureBtn.addEventListener('click', async () => {
+                try {
+                    captureBtn.disabled = true;
+                    captureBtnIcon.textContent = '⏳';
+                    captureBtnText.textContent = 'Requesting Pi...';
+
+                    await db.ref('camera_control').update({
+                        capture_requested: true,
+                        status: 'requested',
+                        requested_at: Date.now()
+                    });
+
+                    showToast('Capture command sent to Raspberry Pi! Focusing camera & analyzing...', 'info');
+                } catch (err) {
+                    captureBtn.disabled = false;
+                    captureBtnIcon.textContent = '📸';
+                    captureBtnText.textContent = 'Capture & Analyze';
+                    showToast(`Failed to send capture trigger: ${err.message}`, 'error');
+                }
+            });
+
+            // Listen to Pi execution status so button reflects live progress
+            db.ref('camera_control').on('value', (ctrlSnap) => {
+                const ctrl = ctrlSnap.val();
+                if (!ctrl) return;
+
+                if (ctrl.capture_requested === true || ctrl.status === 'processing') {
+                    captureBtn.disabled = true;
+                    captureBtnIcon.textContent = '⏳';
+                    captureBtnText.textContent = ctrl.status === 'processing'
+                        ? 'Pi Processing...'
+                        : 'Waiting for Pi...';
+                } else {
+                    captureBtn.disabled = false;
+                    captureBtnIcon.textContent = '📸';
+                    captureBtnText.textContent = 'Capture & Analyze';
+
+                    if (ctrl.status === 'error' && ctrl.error_message) {
+                        showToast(`Raspberry Pi error: ${ctrl.error_message}`, 'error');
+                    }
                 }
             });
 
